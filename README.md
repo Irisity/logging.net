@@ -3,14 +3,42 @@
 
 Logging abstraction written in C#/.NET 8.
 
-# Why another logging abstraction?
+## Why another logging abstraction?
 
-# General logging guidelines
+## General logging guidelines
 
-# Getting started
+## Getting started
 
-# Logging context
+Pass an `ILog` into your class and give it a name:
+```
+public class Generator(ILog log)
+{
+  private ILog log = log.NameOf<Generator>();
+}
+```
 
-# Logging using Serilog
+Use the log in a method to log something, including properties:
+```
+public void ReadFile(string path)
+{
+  using (LogContext.With("path", path)) // This will make path be added to all logging within the scope,
+                                        // including when an exception is thrown out of it and logged by the caller.
+  {        
+    var fileContents = File.ReadAllBytes(path);
 
-# Asserting logging in unit tests
+    this.log
+      .With("bytes", fileContents.Length) // Include the number of bytes read into a property
+      .Info("Read file"); // For searchability, the message string should always be static and unique within this log
+
+    // ... Rest of method
+  }
+}
+```
+
+## Logging context
+
+## Logging using Serilog
+
+## Asserting logging in unit tests
+
+## Time-and-log helper
