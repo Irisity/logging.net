@@ -16,7 +16,7 @@ public interface ILog
     ILog With<T>(string key, T value, bool destructureObjects = false);
 
     /// <summary>
-    /// Returns an ILog that have a pre-configured level.
+    /// Returns an ILog that has a pre-configured level.
     /// </summary>
     /// <remarks>Note that levels are additive. So if an ILog have a Level set to 1, and Log method is called with level 2, the actual resulting level will be 3.</remarks>
     ILog Level(int level);
