@@ -1,7 +1,7 @@
 # logging.net
 [![.NET](https://github.com/Irisity/logging.net/actions/workflows/dotnet.yml/badge.svg)](https://github.com/Irisity/logging.net/actions/workflows/dotnet.yml)
 
-Logging abstraction written in C#/.NET 8.
+Logging abstraction written in C#/.NET Standard 2.0.
 
 ## Why another logging abstraction?
 

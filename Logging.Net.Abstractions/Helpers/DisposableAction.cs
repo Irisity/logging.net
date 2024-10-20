@@ -1,12 +1,22 @@
-﻿namespace Logging.Net.Abstractions.Helpers;
+﻿using System;
 
-/// <summary>
-/// Helper class for Time method.
-/// </summary>
-internal class DisposableAction(Action action) : IDisposable
+namespace Logging.Net.Abstractions.Helpers
 {
-    public void Dispose()
-    {
-        action();
-    }
+	/// <summary>
+	/// Helper class for Time method.
+	/// </summary>
+	internal class DisposableAction : IDisposable
+	{
+		private readonly Action action;
+
+		public DisposableAction(Action action)
+		{
+			this.action = action;
+		}
+
+		public void Dispose()
+	    {
+	        action();
+	    }
+	}
 }
