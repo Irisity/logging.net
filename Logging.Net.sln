@@ -1,0 +1,30 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.10.35201.131
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Logging.Net.Abstractions", "Logging.Net.Abstractions\Logging.Net.Abstractions.csproj", "{123A1C34-8033-4AEE-B217-A29B22DE7BE7}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{AEDC02B5-32EC-41D2-93F6-45DC40E2DC12}"
+	ProjectSection(SolutionItems) = preProject
+		README.md = README.md
+	EndProjectSection
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{123A1C34-8033-4AEE-B217-A29B22DE7BE7}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{123A1C34-8033-4AEE-B217-A29B22DE7BE7}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{123A1C34-8033-4AEE-B217-A29B22DE7BE7}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{123A1C34-8033-4AEE-B217-A29B22DE7BE7}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {DDF2FFA7-D288-4D61-9D9B-B4FF0E68374A}
+	EndGlobalSection
+EndGlobal
