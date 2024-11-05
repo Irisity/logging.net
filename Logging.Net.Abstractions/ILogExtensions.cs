@@ -18,7 +18,7 @@ namespace Logging.Net.Abstractions
 	    /// </summary>
 	    public static void Info(this ILog log, string message, Exception e = null)
 	    {
-	        log.Log((int)Abstractions.Level.Error, message, e);
+	        log.Log((int)Abstractions.Level.Info, message, e);
 	    }
 
 	    /// <summary>
@@ -58,7 +58,7 @@ namespace Logging.Net.Abstractions
 	    /// </summary>
 	    public static ILog NameOf<T>(this ILog log)
 	    {
-	        return log.Name(nameof(T));
+	        return log.Name(typeof(T).Name);
 	    }
 
 	    /// <summary>

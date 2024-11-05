@@ -4,6 +4,6 @@
 	{
 		Console,
 		File,
-		Logtail,
+		BetterStack,
 	}
 }

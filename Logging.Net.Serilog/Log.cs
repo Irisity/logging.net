@@ -1,6 +1,6 @@
 ﻿using Logging.Net.Abstractions;
 using Serilog;
-using Serilog.Core;
+using Serilog.Events;
 using System;
 using System.Text;
 
@@ -24,7 +24,6 @@ namespace Logging.Net.Serilog
 		{
 			var log = new Log(this);
 			log.level += level;
-			log.logger = log.logger.ForContext(LevelKey, log.level);
 			return log;
 		}
 
@@ -40,7 +39,6 @@ namespace Logging.Net.Serilog
 				sb.Append(name);
 				log.name = sb.ToString();
 			}
-			log.logger.ForContext(NameKey, log.name);
 			return log;
 		}
 
@@ -53,32 +51,37 @@ namespace Logging.Net.Serilog
 
 		void ILog.Log(int level, string message, Exception exception)
 		{
-			if (level < 0)
-			{
-				if (exception == null)
-					this.logger.Error(message);
-				else
-					this.logger.Error(exception, message);
-
-				return;
-			}
-
 			level += this.level;
 			if (!Logging.maxLevel.HasValue || level <= Logging.maxLevel.Value)
 			{
-				var log = this.logger.ForContext(LevelKey, level);
+				var log = this.logger.ForContext("log", new { level, this.name }, true);
+
 				if (exception == null)
-					log.Information(message);
+					log.Write(GetSerilogLevel(level), message);
 				else
-					log.Information(exception, message);
+					log.Write(GetSerilogLevel(level), exception, message);
+			}
+		}
+
+		private LogEventLevel GetSerilogLevel(int level)
+		{
+			if (level < 0)
+				return LogEventLevel.Error;
+
+			switch (level)
+			{
+				case (int)Abstractions.Level.Debug: return LogEventLevel.Debug;
+				case (int)Abstractions.Level.Info: return LogEventLevel.Information;
+				default:
+				return LogEventLevel.Verbose;
 			}
 		}
 
 		private Log(Log log)
 		{
-			level = log.level;
-			name = log.name;
-			logger = log.logger;
+			this.level = log.level;
+			this.name = log.name;
+			this.logger = log.logger;
 		}
 	}
 }

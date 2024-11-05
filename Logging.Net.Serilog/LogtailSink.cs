@@ -61,11 +61,11 @@ namespace Log.Serilog
 				args.ErrorContext.Handled = true;   // Ignore Properties that throws Exceptions
 			};
 
-			url = "https://in.logtail.com"
+			this.url = "https://in.logtail.com"
 				.WithOAuthBearerToken(this.logtailToken)
 				.WithTimeout(TimeSpan.FromSeconds(10));
 
-			sendTask = Task.Run(SendTask);
+			this.sendTask = Task.Run(SendTask);
 		}
 
 		private async Task SendTask()
@@ -75,35 +75,35 @@ namespace Log.Serilog
 			{
 				await Task.Delay(TimeSpan.FromMilliseconds(200));
 
-				runAgain = !cancellationTokenSource.Token.IsCancellationRequested;
+				runAgain = !this.cancellationTokenSource.Token.IsCancellationRequested;
 
-				while (dequeuedEvents.Count < 1000 && events.TryDequeue(out var logEvent))
-					dequeuedEvents.Add(logEvent);
+				while (this.dequeuedEvents.Count < 1000 && this.events.TryDequeue(out var logEvent))
+					this.dequeuedEvents.Add(logEvent);
 
-				if (dequeuedEvents.Any())
+				if (this.dequeuedEvents.Any())
 				{
 					try
 					{
-						var content = serialize(dequeuedEvents);
-						await send(content);
+						var content = this.serialize(this.dequeuedEvents);
+						await this.send(content);
 					}
 					catch (Exception e)
 					{
-						Console.WriteLine($"Failed uploading {dequeuedEvents.Count} logs: {e}");
+						Console.WriteLine($"Failed uploading {this.dequeuedEvents.Count} logs: {e}");
 					}
-					dequeuedEvents.Clear();
+					this.dequeuedEvents.Clear();
 				}
 			} while (runAgain);
 		}
 
 		public void Emit(LogEvent logEvent)
 		{
-			events.Enqueue(logEvent);
+			this.events.Enqueue(logEvent);
 		}
 
 		private async Task send(HttpContent content)
 		{
-			await retryPolicy.ExecuteAsync(() => url.PostAsync(content));
+			await retryPolicy.ExecuteAsync(() => this.url.PostAsync(content));
 		}
 
 		private HttpContent serialize(IEnumerable<LogEvent> logs)
@@ -133,11 +133,13 @@ namespace Log.Serilog
 			{
 				case LogEventLevel.Fatal:
 				case LogEventLevel.Error:
-					return "ERROR";
+					return "ERR";
+				case LogEventLevel.Debug:
+					return "DBG";
+				case LogEventLevel.Verbose:
+					return "VRB";
 				case LogEventLevel.Warning:
 				case LogEventLevel.Information:
-				case LogEventLevel.Debug:
-				case LogEventLevel.Verbose:
 				default:
 					return "INF";
 			}
@@ -145,14 +147,21 @@ namespace Log.Serilog
 
 		private Dictionary<string, object> RenderProperties(IReadOnlyDictionary<string, LogEventPropertyValue> properties)
 		{
-			return properties.ToDictionary(p => p.Key, p =>
+			return properties.SelectMany(ExpandProperties).ToDictionary(p => p.Item1, p => p.Item2);
+		}
+
+		private IEnumerable<(string, object)> ExpandProperties(KeyValuePair<string, LogEventPropertyValue> property)
+		{
+			if (property.Value is ScalarValue scv)
 			{
-				if (p.Value is ScalarValue sv)
-				{
-					return sv.Value;
-				}
-				return p.Value.ToString();
-			});
+				return new[] { (property.Key, scv.Value) };
+			}
+			else if (property.Value is StructureValue stv)
+			{
+				return stv.Properties.SelectMany(p => ExpandProperties(new KeyValuePair<string, LogEventPropertyValue>($"{property.Key}.{p.Name}", p.Value)));
+			}
+			
+			return new[] { (property.Key, (object)property.Value.ToString()) };
 		}
 
 		/// <summary>
@@ -189,7 +198,7 @@ namespace Log.Serilog
 
 			/// <inheritdoc />
 			public override bool CanConvert(Type objectType) =>
-				_type.IsAssignableFrom(objectType);
+				this._type.IsAssignableFrom(objectType);
 		}
 
 		protected virtual void Dispose(bool disposing)
@@ -198,8 +207,8 @@ namespace Log.Serilog
 			{
 				if (disposing)
 				{
-					cancellationTokenSource.Cancel();
-					sendTask.Wait();
+					this.cancellationTokenSource.Cancel();
+					this.sendTask.Wait();
 				}
 
 				disposedValue = true;
@@ -225,7 +234,6 @@ namespace Log.Serilog
 
 			return exception.StatusCode.HasValue && httpStatusCodesWorthRetrying.Contains(exception.StatusCode.Value);
 		}
-
 	}
 }
 

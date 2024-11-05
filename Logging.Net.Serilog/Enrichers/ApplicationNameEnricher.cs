@@ -20,11 +20,11 @@ namespace Log.Serilog
 
 		private LogEventProperty GetLogEventProperty(ILogEventPropertyFactory propertyFactory)
 		{
-			if (cachedProperty == null)
+			if (this.cachedProperty == null)
 			{
-				cachedProperty = CreateProperty(propertyFactory, applicationName);
+				this.cachedProperty = CreateProperty(propertyFactory, this.applicationName);
 			}
-			return cachedProperty;
+			return this.cachedProperty;
 		}
 
 		private static LogEventProperty CreateProperty(ILogEventPropertyFactory propertyFactory, string applicationName)
