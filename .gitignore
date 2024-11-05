@@ -1,3 +1,5 @@
 .vs/
 Logging.Net.Abstractions/obj/
 Logging.Net.Abstractions/bin/
+Logging.Net.Serilog/bin/
+Logging.Net.Serilog/obj/
