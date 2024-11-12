@@ -7,7 +7,7 @@ using Serilog.Templates.Themes;
 
 namespace Logging.Net.Serilog
 {
-	public static class Logging
+    public static class Logging
 	{
 		internal static Logger mainLogger;
 		internal static int? maxLevel;
@@ -64,6 +64,8 @@ namespace Logging.Net.Serilog
 			mainLogger = loggerConfiguration.CreateLogger();
 
 			Logging.maxLevel = maxLevel;
+
+			Abstractions.LogFactory.LogImplementationAccessor = () => new Log();
 
 			return new Log();
 		}

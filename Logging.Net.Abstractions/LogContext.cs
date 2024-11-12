@@ -8,7 +8,7 @@ namespace Logging.Net.Abstractions
 	public static class LogContext
 	{
 	    /// <summary>
-	    /// The actual accessor for logging context. This must be configured at the start of the program for context properties to be usable.
+	    /// The actual accessor for logging context. This must be configured at the start of the program for context properties to be usable, which is usually done automatically when initializing an implementation (e.g. Logging.Net.Serilog).
 	    /// </summary>
 	    public static Func<ILogContext> LogContextAccessor;
 

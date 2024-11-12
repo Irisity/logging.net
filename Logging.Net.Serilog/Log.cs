@@ -1,45 +1,37 @@
 ﻿using Logging.Net.Abstractions;
+using Logging.Net.Abstractions.Helpers;
 using Serilog;
 using Serilog.Events;
 using System;
-using System.Text;
 
 namespace Logging.Net.Serilog
 {
-	internal class Log : ILog
+	/// <summary>
+	/// The ILog implementation using Serilog.
+	/// </summary>
+    internal class Log : ILog
 	{
-		private const string LevelKey = "log.level";
-		private const string NameKey = "log.name";
-
+		private NameAndLevelHandler nameAndLevelHandler;
 		private ILogger logger;
-		private int level;
-		private string name;
 
 		public Log() 
 		{
 			this.logger = Logging.mainLogger;
+			this.nameAndLevelHandler = new NameAndLevelHandler();
 		}
 
 		public ILog Level(int level)
 		{
-			var log = new Log(this);
-			log.level += level;
-			return log;
+			var copy = new Log(this);
+			copy.nameAndLevelHandler = copy.nameAndLevelHandler.AddLevel(level);
+			return copy;
 		}
 
 		public ILog Name(string name)
 		{
-			var log = new Log(this);
-			if (log.name == null)
-				log.name = name;
-			else
-			{
-				var sb = new StringBuilder(log.name, log.name.Length + 1 + name.Length);
-				sb.Append('/');
-				sb.Append(name);
-				log.name = sb.ToString();
-			}
-			return log;
+			var copy = new Log(this);
+			copy.nameAndLevelHandler = copy.nameAndLevelHandler.AddName(name);
+			return copy;
 		}
 
 		public ILog With<T>(string key, T value, bool destructureObjects = false)
@@ -51,10 +43,12 @@ namespace Logging.Net.Serilog
 
 		void ILog.Log(int level, string message, Exception exception)
 		{
-			level += this.level;
+			level += this.nameAndLevelHandler.Level;
 			if (!Logging.maxLevel.HasValue || level <= Logging.maxLevel.Value)
 			{
-				var log = this.logger.ForContext("log", new { level, this.name }, true);
+				// Use name and level inside a structured object to be able to refer to them from the template,
+				// as Serilog does not allow referencing fields whose name contain dots
+				var log = this.logger.ForContext("log", new { level, name = this.nameAndLevelHandler.Name }, true);
 
 				if (exception == null)
 					log.Write(GetSerilogLevel(level), message);
@@ -79,8 +73,7 @@ namespace Logging.Net.Serilog
 
 		private Log(Log log)
 		{
-			this.level = log.level;
-			this.name = log.name;
+			this.nameAndLevelHandler = log.nameAndLevelHandler;
 			this.logger = log.logger;
 		}
 	}

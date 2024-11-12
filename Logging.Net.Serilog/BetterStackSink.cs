@@ -20,7 +20,10 @@ using System.Threading.Tasks;
 
 namespace Log.Serilog
 {
-	public class LogtailSink : ILogEventSink, IDisposable
+	/// <summary>
+	/// A Serilog sink that outputs the logs to BetterStack logging.
+	/// </summary>
+	public class BetterStackSink : ILogEventSink, IDisposable
 	{
 		private readonly static JsonSerializerSettings settings = new JsonSerializerSettings
 		{
@@ -28,7 +31,18 @@ namespace Log.Serilog
 			ContractResolver = new DefaultContractResolver
 			{
 				NamingStrategy = new CamelCaseNamingStrategy()
-			}
+			},
+			Converters = new List<JsonConverter>
+			{
+				new Newtonsoft.Json.Converters.StringEnumConverter(),
+				new ToStringJsonConverter(typeof(System.Reflection.MemberInfo)),
+				new ToStringJsonConverter(typeof(System.Reflection.Assembly)),
+				new ToStringJsonConverter(typeof(System.Reflection.Module)),
+			},
+			Error = (sender, args) =>
+			{
+				args.ErrorContext.Handled = true;   // Ignore Properties that throws Exceptions
+			},
 		};
 		private readonly static AsyncRetryPolicy retryPolicy = Policy
 			.Handle<FlurlHttpException>(IsTransientError)
@@ -48,18 +62,9 @@ namespace Log.Serilog
 		private readonly CancellationTokenSource cancellationTokenSource = new CancellationTokenSource();
 		private bool disposedValue;
 
-		public LogtailSink(string logtailToken)
+		public BetterStackSink(string logtailToken)
 		{
 			this.logtailToken = logtailToken;
-
-			settings.Converters.Add(new Newtonsoft.Json.Converters.StringEnumConverter());
-			settings.Converters.Add(new ToStringJsonConverter(typeof(System.Reflection.MemberInfo)));
-			settings.Converters.Add(new ToStringJsonConverter(typeof(System.Reflection.Assembly)));
-			settings.Converters.Add(new ToStringJsonConverter(typeof(System.Reflection.Module)));
-			settings.Error = (sender, args) =>
-			{
-				args.ErrorContext.Handled = true;   // Ignore Properties that throws Exceptions
-			};
 
 			this.url = "https://in.logtail.com"
 				.WithOAuthBearerToken(this.logtailToken)
@@ -242,6 +247,6 @@ public static class SerilogLogtailSinkExtensions
 	public static LoggerConfiguration LogtailSink(
 			  this LoggerSinkConfiguration loggerConfiguration, string logtailToken)
 	{
-		return loggerConfiguration.Sink(new LogtailSink(logtailToken));
+		return loggerConfiguration.Sink(new BetterStackSink(logtailToken));
 	}
 }
