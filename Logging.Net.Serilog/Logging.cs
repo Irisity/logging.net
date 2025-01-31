@@ -67,6 +67,9 @@ namespace Logging.Net.Serilog
 
 			Abstractions.LogFactory.LogImplementationAccessor = () => new Log();
 
+			var logContextAccessor = new LogContextAccessor();
+			Abstractions.LogContext.LogContextAccessor = () => logContextAccessor; 
+
 			return new Log();
 		}
 
