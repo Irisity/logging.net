@@ -12,6 +12,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
+using System.Linq.Expressions;
 using System.Net;
 using System.Net.Http;
 using System.Text;
@@ -56,7 +57,7 @@ namespace Log.Serilog
 
 		private readonly string logtailToken;
 		private readonly ConcurrentQueue<LogEvent> events = new ConcurrentQueue<LogEvent>();
-		private readonly IFlurlRequest url;
+		private readonly IFlurlClient client;
 		private readonly Task sendTask;
 		private readonly List<LogEvent> dequeuedEvents = new List<LogEvent>();
 		private readonly CancellationTokenSource cancellationTokenSource = new CancellationTokenSource();
@@ -66,23 +67,35 @@ namespace Log.Serilog
 		{
 			this.logtailToken = logtailToken;
 
-			this.url = "https://in.logtail.com"
+			this.client = new FlurlClient("https://in.logtail.com")
 				.WithOAuthBearerToken(this.logtailToken)
-				.WithTimeout(TimeSpan.FromSeconds(10));
+				.WithTimeout(TimeSpan.FromSeconds(20));
 
 			this.sendTask = Task.Run(SendTask);
 		}
 
 		private async Task SendTask()
 		{
-			bool runAgain = true;
-			do
+			while (true)
 			{
 				await Task.Delay(TimeSpan.FromMilliseconds(200));
 
-				runAgain = !this.cancellationTokenSource.Token.IsCancellationRequested;
+				if (this.cancellationTokenSource.Token.IsCancellationRequested)
+				{
+					break;
+				}
 
-				while (this.dequeuedEvents.Count < 1000 && this.events.TryDequeue(out var logEvent))
+				int discarded = 0;
+				while (this.events.Count > 5000 && this.events.TryDequeue(out var _)) 
+				{
+					++discarded;
+				}
+				if (discarded != 0)
+				{
+					Console.WriteLine($"Discarded {discarded} logs");
+				}
+
+				while (this.dequeuedEvents.Count < 500 && this.events.TryDequeue(out var logEvent))
 					this.dequeuedEvents.Add(logEvent);
 
 				if (this.dequeuedEvents.Any())
@@ -98,7 +111,7 @@ namespace Log.Serilog
 					}
 					this.dequeuedEvents.Clear();
 				}
-			} while (runAgain);
+			}
 		}
 
 		public void Emit(LogEvent logEvent)
@@ -106,9 +119,16 @@ namespace Log.Serilog
 			this.events.Enqueue(logEvent);
 		}
 
-		private async Task send(HttpContent content)
+		private Task send(HttpContent content)
 		{
-			await retryPolicy.ExecuteAsync(() => this.url.PostAsync(content));
+			return retryPolicy.ExecuteAsync(async () =>
+			{
+				Console.WriteLine($"Sending {this.dequeuedEvents.Count} logs");
+				var r = await this.client.Request().PostAsync(content);
+				Console.WriteLine($"Logs sent: {r.StatusCode}");
+				if (r != null)
+					r.Dispose();
+			});
 		}
 
 		private HttpContent serialize(IEnumerable<LogEvent> logs)

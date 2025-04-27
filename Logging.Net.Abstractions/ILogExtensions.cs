@@ -85,5 +85,15 @@ namespace Logging.Net.Abstractions
 	            log.With("elapsed", sw.Elapsed.TotalSeconds).Log(0, message);
 	        });
 	    }
+
+		public static TResult TimeFunc<TResult>(this ILog log, string message, Func<TResult> func)
+		{
+			var sw = new Stopwatch();
+			sw.Start();
+			var result = func();
+			sw.Stop();
+			log.With("elapsed", sw.Elapsed.TotalSeconds).Log(0, message);
+			return result;
+		}
 	}
 }
