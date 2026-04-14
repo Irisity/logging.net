@@ -22,15 +22,16 @@ namespace Logging.Net.Serilog
 		/// <param name="application">If supplied, will include this value in the "run.application" property.</param>
 		/// <param name="maxLevel">If supplied, any logs using a Level above this value will not be output.</param>
 		/// <param name="logHostname">If true, will include the hostname value in the "run.hostname" property.</param>
+		/// <param name="coloredConsole">Only used when sink parameter is Console. If null (default), ANSI colors are emitted when stdout is an interactive terminal and suppressed when redirected. Pass true or false to override the auto-detection.</param>
 		/// <returns>The ILog implementation</returns>
-		public static Abstractions.ILog Init(SinkType sink, string systemName = null, string filename = null, string betterStackToken = null, string application = null, int? maxLevel = null, bool logHostname = false)
+		public static Abstractions.ILog Init(SinkType sink, string systemName = null, string filename = null, string betterStackToken = null, string application = null, int? maxLevel = null, bool logHostname = false, bool? coloredConsole = null)
 		{
 			var loggerConfiguration = new LoggerConfiguration();
 
 			switch (sink)
 			{
 				case SinkType.Console:
-					loggerConfiguration = loggerConfiguration.WriteTo.Console(getOutputTemplate(theme: TemplateTheme.Code));
+					loggerConfiguration = loggerConfiguration.WriteTo.Console(getOutputTemplate(resolveConsoleTheme(coloredConsole)));
 					break;
 				case SinkType.File:
 					loggerConfiguration = loggerConfiguration.WriteTo.File(getOutputTemplate(), filename);
@@ -84,6 +85,12 @@ namespace Logging.Net.Serilog
 		private static ExpressionTemplate getOutputTemplate(TemplateTheme theme = null)
 		{
 			return new ExpressionTemplate("{@t:HH:mm:ss.fff} [{@l:u3} {log.name}] {@m} {@p}\n{@x}", theme: theme);
+		}
+
+		private static TemplateTheme resolveConsoleTheme(bool? coloredConsoleOverride)
+		{
+			var useColor = coloredConsoleOverride ?? !System.Console.IsOutputRedirected;
+			return useColor ? TemplateTheme.Code : null;
 		}
 	}
 }
