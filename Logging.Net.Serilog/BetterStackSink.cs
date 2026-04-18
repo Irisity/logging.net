@@ -123,9 +123,7 @@ namespace Log.Serilog
 		{
 			return retryPolicy.ExecuteAsync(async () =>
 			{
-				Console.WriteLine($"Sending {this.dequeuedEvents.Count} logs");
 				var r = await this.client.Request().PostAsync(content);
-				Console.WriteLine($"Logs sent: {r.StatusCode}");
 				if (r != null)
 					r.Dispose();
 			});
