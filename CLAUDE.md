@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ```bash
 dotnet restore          # Restore NuGet packages
-dotnet build            # Build all projects (multi-target: net48, netstandard2.0, net6.0, net8.0, net10.0)
+dotnet build            # Build all projects (multi-target: netstandard2.0, net6.0, net8.0, net10.0)
 dotnet test             # Run tests (no test project exists yet)
 ```
 
