@@ -1,5 +1,6 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
+using System.Threading;
 
 namespace Logging.Net.Abstractions.Helpers
 {
@@ -59,8 +60,9 @@ namespace Logging.Net.Abstractions.Helpers
                 }
                 else
                 {
-                    copy.names = new List<string>(names.Count + 1);
-                    copy.names.AddRange(names);
+                    var existing = copy.names;
+                    copy.names = new List<string>(existing.Count + 1);
+                    copy.names.AddRange(existing);
                     copy.names.Add(name);
                 }
             }
@@ -84,8 +86,9 @@ namespace Logging.Net.Abstractions.Helpers
                 }
                 else
                 {
-                    copy.properties = new List<IProperty>(properties.Count + 1);
-                    copy.properties.AddRange(properties);
+                    var existing = copy.properties;
+                    copy.properties = new List<IProperty>(existing.Count + 1);
+                    copy.properties.AddRange(existing);
                     copy.properties.Add(property);
                 }
             }
@@ -94,36 +97,33 @@ namespace Logging.Net.Abstractions.Helpers
 
         void ILog.Log(int level, string message, Exception exception)
         {
-            if (logImplementation == null)
+            var impl = this.logImplementation;
+            if (impl == null)
             {
-                if (LogFactory.LogImplementationAccessor != null)
+                var accessor = LogFactory.LogImplementationAccessor;
+                if (accessor != null)
                 {
-                    logImplementation = LogFactory.LogImplementationAccessor();
-                    if (this.level != 0)
+                    var fresh = accessor().Level(this.level);
+                    if (this.names != null)
                     {
-                        logImplementation = logImplementation.Level(level);
-                    }
-                    if (names != null)
-                    {
-                        foreach (var name in names)
+                        foreach (var name in this.names)
                         {
-                            logImplementation = logImplementation.Name(name);
+                            fresh = fresh.Name(name);
                         }
                     }
-                    if (properties != null)
+                    if (this.properties != null)
                     {
-                        foreach (var property in properties)
+                        foreach (var property in this.properties)
                         {
-                            logImplementation = property.Apply(logImplementation);
+                            fresh = property.Apply(fresh);
                         }
                     }
+
+                    impl = Interlocked.CompareExchange(ref this.logImplementation, fresh, null) ?? fresh;
                 }
             }
 
-            if (logImplementation != null)
-            {
-                logImplementation.Log(level, message, exception);
-            }
+            impl?.Log(level, message, exception);
         }
     }
 }
