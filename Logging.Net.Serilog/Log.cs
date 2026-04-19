@@ -66,8 +66,10 @@ namespace Logging.Net.Serilog
 			{
 				case (int)Abstractions.Level.Debug: return LogEventLevel.Debug;
 				case (int)Abstractions.Level.Info: return LogEventLevel.Information;
+				case (int)Abstractions.Level.Verbose:
+				case (int)Abstractions.Level.Trace:
 				default:
-				return LogEventLevel.Verbose;
+					return LogEventLevel.Verbose;
 			}
 		}
 

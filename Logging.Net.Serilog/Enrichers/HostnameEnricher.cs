@@ -1,10 +1,10 @@
-﻿using Serilog.Core;
+using Serilog.Core;
 using Serilog.Events;
 using System.Net;
 
-namespace Log.Serilog
+namespace Logging.Net.Serilog
 {
-	public class HostnameEnricher : ILogEventEnricher
+	public sealed class HostnameEnricher : ILogEventEnricher
 	{
 		private LogEventProperty cachedProperty;
 

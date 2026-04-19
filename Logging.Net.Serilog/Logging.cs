@@ -1,5 +1,4 @@
-﻿using Log.Serilog;
-using Serilog;
+﻿using Serilog;
 using Serilog.Core;
 using Serilog.ExceptionalLogContext;
 using Serilog.Templates;
@@ -62,6 +61,7 @@ namespace Logging.Net.Serilog
 				loggerConfiguration = loggerConfiguration.Enrich.With(new ApplicationNameEnricher(application));
 			}
 
+			mainLogger?.Dispose();
 			mainLogger = loggerConfiguration.CreateLogger();
 
 			Logging.maxLevel = maxLevel;

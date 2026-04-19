@@ -1,5 +1,4 @@
-﻿using Flurl.Http;
-using Log.Serilog;
+using Flurl.Http;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Serialization;
 using Polly;
@@ -12,18 +11,26 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
-using System.Linq.Expressions;
 using System.Net;
 using System.Net.Http;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace Log.Serilog
+namespace Logging.Net.Serilog
 {
 	/// <summary>
-	/// A Serilog sink that outputs the logs to BetterStack logging.
+	/// A Serilog sink that outputs the logs to BetterStack logging (formerly Logtail).
 	/// </summary>
+	/// <remarks>
+	/// Events are buffered in an in-memory queue and uploaded asynchronously in batches of up to 500.
+	/// The queue has a hard cap of 5000 pending events; if the producer outpaces the uploader, the oldest
+	/// events are dropped to make room and a notice is written to <see cref="Console"/>. Polly retries
+	/// transient HTTP failures (408/502/503/504) up to 5 times with exponential backoff; events are
+	/// dropped after retries are exhausted. Because this library is intended to run inside containers
+	/// where stdout is captured by the orchestrator, <see cref="Console"/> is used as the diagnostic
+	/// channel for sink-internal errors rather than a Serilog self-log.
+	/// </remarks>
 	public class BetterStackSink : ILogEventSink, IDisposable
 	{
 		private readonly static JsonSerializerSettings settings = new JsonSerializerSettings
@@ -76,17 +83,20 @@ namespace Log.Serilog
 
 		private async Task SendTask()
 		{
+			var token = this.cancellationTokenSource.Token;
 			while (true)
 			{
-				await Task.Delay(TimeSpan.FromMilliseconds(200));
-
-				if (this.cancellationTokenSource.Token.IsCancellationRequested)
+				try
+				{
+					await Task.Delay(TimeSpan.FromMilliseconds(200), token);
+				}
+				catch (OperationCanceledException)
 				{
 					break;
 				}
 
 				int discarded = 0;
-				while (this.events.Count > 5000 && this.events.TryDequeue(out var _)) 
+				while (this.events.Count > 5000 && this.events.TryDequeue(out var _))
 				{
 					++discarded;
 				}
@@ -183,7 +193,7 @@ namespace Log.Serilog
 			{
 				return stv.Properties.SelectMany(p => ExpandProperties(new KeyValuePair<string, LogEventPropertyValue>($"{property.Key}.{p.Name}", p.Value)));
 			}
-			
+
 			return new[] { (property.Key, (object)property.Value.ToString()) };
 		}
 
@@ -258,13 +268,13 @@ namespace Log.Serilog
 			return exception.StatusCode.HasValue && httpStatusCodesWorthRetrying.Contains(exception.StatusCode.Value);
 		}
 	}
-}
 
-public static class SerilogLogtailSinkExtensions
-{
-	public static LoggerConfiguration LogtailSink(
-			  this LoggerSinkConfiguration loggerConfiguration, string logtailToken)
+	public static class SerilogLogtailSinkExtensions
 	{
-		return loggerConfiguration.Sink(new BetterStackSink(logtailToken));
+		public static LoggerConfiguration LogtailSink(
+				  this LoggerSinkConfiguration loggerConfiguration, string logtailToken)
+		{
+			return loggerConfiguration.Sink(new BetterStackSink(logtailToken));
+		}
 	}
 }

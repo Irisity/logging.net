@@ -1,12 +1,12 @@
-﻿using Serilog.Core;
+using Serilog.Core;
 using Serilog.Events;
 
-namespace Log.Serilog
+namespace Logging.Net.Serilog
 {
-	public class ApplicationNameEnricher : ILogEventEnricher
+	public sealed class ApplicationNameEnricher : ILogEventEnricher
 	{
+		private readonly string applicationName;
 		private LogEventProperty cachedProperty;
-		private string applicationName;
 
 		public ApplicationNameEnricher(string applicationName)
 		{
