@@ -23,7 +23,7 @@ This is a logging abstraction library with a Serilog-based implementation, struc
 
 **Deferred initialization**: `LogFactory` uses a static `LogImplementationAccessor` delegate so `ILog` instances can be created (via `LogFactory.Name()` / `LogFactory.NameOf<T>()`) before the Serilog implementation is initialized. `DeferredLogRouter` caches names, levels, and properties until initialization completes.
 
-**Fluent API**: `ILog` methods (`Name()`, `With<T>()`, `Level()`) return `ILog` for chaining. Actual log output happens via terminal methods like `.Info("message")`, `.Error("message")`, etc. (defined as extension methods in `ILogExtensions`).
+**Fluent API**: `ILog` methods (`Name()`, `With<T>()`, `Level()`) return `ILog` for chaining. Actual log output happens via terminal methods like `.Info("message")`, `.Error("message")`, etc. (defined as extension methods in `LogExtensions`).
 
 **Hierarchical naming**: Log names are separated by `/` (e.g., `"Generator/ReadFile"`). Use `NameOf<T>()` to name from a type.
 

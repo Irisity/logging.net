@@ -1,6 +1,6 @@
-﻿namespace Logging.Net.Abstractions.Helpers
+namespace Logging.Net.Abstractions.Helpers
 {
-    public interface IProperty
+    internal interface IProperty
     {
         ILog Apply(ILog logImplementation);
     }

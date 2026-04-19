@@ -3,7 +3,7 @@ using System.Diagnostics;
 
 namespace Logging.Net.Abstractions
 {
-	public static class ILogExtensions
+	public static class LogExtensions
 	{
 	    /// <summary>
 	    /// Log a message with the Error level.
@@ -88,12 +88,16 @@ namespace Logging.Net.Abstractions
 
 		public static TResult TimeFunc<TResult>(this ILog log, string message, Func<TResult> func)
 		{
-			var sw = new Stopwatch();
-			sw.Start();
-			var result = func();
-			sw.Stop();
-			log.With("elapsed", sw.Elapsed.TotalSeconds).Log(0, message);
-			return result;
+			var sw = Stopwatch.StartNew();
+			try
+			{
+				return func();
+			}
+			finally
+			{
+				sw.Stop();
+				log.With("elapsed", sw.Elapsed.TotalSeconds).Log(0, message);
+			}
 		}
 	}
 }
