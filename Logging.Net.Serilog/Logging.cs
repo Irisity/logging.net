@@ -22,8 +22,9 @@ namespace Logging.Net.Serilog
 		/// <param name="maxLevel">If supplied, any logs using a Level above this value will not be output.</param>
 		/// <param name="logHostname">If true, will include the hostname value in the "run.hostname" property.</param>
 		/// <param name="coloredConsole">Only used when sink parameter is Console. If null (default), ANSI colors are emitted when stdout is an interactive terminal and suppressed when redirected. Pass true or false to override the auto-detection.</param>
+		/// <param name="configure">Optional callback for additional Serilog configuration (e.g. MinimumLevel.Override for specific categories).</param>
 		/// <returns>The ILog implementation</returns>
-		public static Abstractions.ILog Init(SinkType sink, string systemName = null, string filename = null, string betterStackToken = null, string application = null, int? maxLevel = null, bool logHostname = false, bool? coloredConsole = null)
+		public static Abstractions.ILog Init(SinkType sink, string systemName = null, string filename = null, string betterStackToken = null, string application = null, int? maxLevel = null, bool logHostname = false, bool? coloredConsole = null, System.Action<LoggerConfiguration> configure = null)
 		{
 			var loggerConfiguration = new LoggerConfiguration();
 
@@ -61,6 +62,8 @@ namespace Logging.Net.Serilog
 				loggerConfiguration = loggerConfiguration.Enrich.With(new ApplicationNameEnricher(application));
 			}
 
+			configure?.Invoke(loggerConfiguration);
+
 			mainLogger?.Dispose();
 			mainLogger = loggerConfiguration.CreateLogger();
 			global::Serilog.Log.Logger = mainLogger;
@@ -85,7 +88,10 @@ namespace Logging.Net.Serilog
 
 		private static ExpressionTemplate getOutputTemplate(TemplateTheme theme = null)
 		{
-			return new ExpressionTemplate("{@t:HH:mm:ss.fff} [{@l:u3} {log.name}] {@m} {@p}\n{@x}", theme: theme);
+			// Coalesce to SourceContext so logs routed through Microsoft.Extensions.Logging
+			// (EF Core, Kestrel, etc. — which carry the MEL category as SourceContext
+			// instead of setting log.name) still render a name in the [LVL name] slot.
+			return new ExpressionTemplate("{@t:HH:mm:ss.fff} [{@l:u3} {coalesce(log.name, SourceContext)}] {@m} {@p}\n{@x}", theme: theme);
 		}
 
 		private static TemplateTheme resolveConsoleTheme(bool? coloredConsoleOverride)
