@@ -63,6 +63,7 @@ namespace Logging.Net.Serilog
 
 			mainLogger?.Dispose();
 			mainLogger = loggerConfiguration.CreateLogger();
+			global::Serilog.Log.Logger = mainLogger;
 
 			Logging.maxLevel = maxLevel;
 
