@@ -24,4 +24,8 @@
     <ProjectReference Include="..\Logging.Net.Abstractions\Logging.Net.Abstractions.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="Logging.Net.Tests" />
+  </ItemGroup>
+
 </Project>

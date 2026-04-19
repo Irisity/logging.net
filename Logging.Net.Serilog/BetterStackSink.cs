@@ -178,23 +178,82 @@ namespace Logging.Net.Serilog
 			}
 		}
 
-		private Dictionary<string, object> RenderProperties(IReadOnlyDictionary<string, LogEventPropertyValue> properties)
+		internal static Dictionary<string, object> RenderProperties(IReadOnlyDictionary<string, LogEventPropertyValue> properties)
 		{
-			return properties.SelectMany(ExpandProperties).ToDictionary(p => p.Item1, p => p.Item2);
+			// BetterStack/Logtail rejects property names that contain dots (it expects nested JSON
+			// objects instead). Render each property value recursively, then split any dotted keys
+			// into nested dictionaries so the uploaded payload has a proper object structure.
+			var root = new Dictionary<string, object>();
+			foreach (var property in properties)
+				MergeNested(root, property.Key, RenderValue(property.Value));
+			return root;
 		}
 
-		private IEnumerable<(string, object)> ExpandProperties(KeyValuePair<string, LogEventPropertyValue> property)
+		private static object RenderValue(LogEventPropertyValue value)
 		{
-			if (property.Value is ScalarValue scv)
+			switch (value)
 			{
-				return new[] { (property.Key, scv.Value) };
+				case ScalarValue scv:
+					return scv.Value;
+				case StructureValue stv:
+				{
+					var obj = new Dictionary<string, object>();
+					foreach (var p in stv.Properties)
+						MergeNested(obj, p.Name, RenderValue(p.Value));
+					return obj;
+				}
+				case SequenceValue sqv:
+					return sqv.Elements.Select(RenderValue).ToList();
+				case DictionaryValue dv:
+				{
+					var obj = new Dictionary<string, object>();
+					foreach (var kvp in dv.Elements)
+						MergeNested(obj, kvp.Key.Value?.ToString() ?? "", RenderValue(kvp.Value));
+					return obj;
+				}
+				default:
+					return value.ToString();
 			}
-			else if (property.Value is StructureValue stv)
-			{
-				return stv.Properties.SelectMany(p => ExpandProperties(new KeyValuePair<string, LogEventPropertyValue>($"{property.Key}.{p.Name}", p.Value)));
-			}
+		}
 
-			return new[] { (property.Key, (object)property.Value.ToString()) };
+		private static void MergeNested(Dictionary<string, object> target, string dottedKey, object value)
+		{
+			// Last-write-wins on shape conflicts: if a path segment already exists as a non-dict
+			// scalar, or the leaf already holds a value of a different shape than the incoming one,
+			// the earlier value is overwritten. Serilog's property model doesn't produce such
+			// conflicts in practice, but we don't attempt to preserve both sides if it ever does.
+			var cursor = target;
+			string leaf;
+			if (dottedKey.IndexOf('.') < 0)
+			{
+				// Fast path: most keys have no dots, skip the Split allocation.
+				leaf = dottedKey;
+			}
+			else
+			{
+				var parts = dottedKey.Split('.');
+				for (int i = 0; i < parts.Length - 1; i++)
+				{
+					if (!cursor.TryGetValue(parts[i], out var next) || !(next is Dictionary<string, object> nextDict))
+					{
+						nextDict = new Dictionary<string, object>();
+						cursor[parts[i]] = nextDict;
+					}
+					cursor = nextDict;
+				}
+				leaf = parts[parts.Length - 1];
+			}
+			if (value is Dictionary<string, object> incoming
+				&& cursor.TryGetValue(leaf, out var existing)
+				&& existing is Dictionary<string, object> existingDict)
+			{
+				foreach (var kvp in incoming)
+					MergeNested(existingDict, kvp.Key, kvp.Value);
+			}
+			else
+			{
+				cursor[leaf] = value;
+			}
 		}
 
 		/// <summary>
