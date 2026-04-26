@@ -79,6 +79,17 @@ namespace Logging.Net.Serilog
 		}
 
 		/// <summary>
+		/// Wires ASP.NET Core's ILoggerFactory through the Serilog instance created by Init().
+		/// Call this after Init() and before builder.Build(). Log levels are still controlled
+		/// by the "Logging" section in appsettings.json.
+		/// </summary>
+		public static void UseMicrosoftLogging(Microsoft.Extensions.Logging.ILoggingBuilder loggingBuilder)
+		{
+			loggingBuilder.ClearProviders();
+			loggingBuilder.AddSerilog(mainLogger, dispose: false);
+		}
+
+		/// <summary>
 		/// Flushes and closes Serilog.
 		/// </summary>
 		public static void Flush()
