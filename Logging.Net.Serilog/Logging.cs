@@ -1,4 +1,5 @@
-﻿using Serilog;
+﻿using Microsoft.Extensions.Logging;
+using Serilog;
 using Serilog.Core;
 using Serilog.ExceptionalLogContext;
 using Serilog.Templates;
