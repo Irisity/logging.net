@@ -103,7 +103,9 @@ namespace Logging.Net.Serilog
 			// Coalesce to SourceContext so logs routed through Microsoft.Extensions.Logging
 			// (EF Core, Kestrel, etc. — which carry the MEL category as SourceContext
 			// instead of setting log.name) still render a name in the [LVL name] slot.
-			return new ExpressionTemplate("{@t:HH:mm:ss.fff} [{@l:u3} {coalesce(log.name, SourceContext)}] {@m} {@p}\n{@x}", theme: theme);
+			// rest() emits the remaining properties as JSON, excluding any already referenced
+			// in the template — so `log` (used via log.name) is not duplicated in the output.
+			return new ExpressionTemplate("{@t:HH:mm:ss.fff} [{@l:u3} {coalesce(log.name, SourceContext)}] {@m} {rest():j}\n{@x}", theme: theme);
 		}
 
 		private static TemplateTheme resolveConsoleTheme(bool? coloredConsoleOverride)
