@@ -8,6 +8,7 @@ EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{AEDC02B5-32EC-41D2-93F6-45DC40E2DC12}"
 	ProjectSection(SolutionItems) = preProject
 		README.md = README.md
+		CLAUDE.md = CLAUDE.md
 	EndProjectSection
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Logging.Net.Serilog", "Logging.Net.Serilog\Logging.Net.Serilog.csproj", "{0BBCB2AB-9AC6-45D3-8F7F-65570053FF21}"
