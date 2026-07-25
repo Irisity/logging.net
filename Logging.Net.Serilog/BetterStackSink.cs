@@ -10,6 +10,8 @@ using Serilog.Events;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.IO;
+using System.IO.Compression;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
@@ -155,8 +157,25 @@ namespace Logging.Net.Serilog
 				return dict;
 			}).ToList();
 			var payload = JsonConvert.SerializeObject(logtailEvents, settings);
-			var content = new ByteArrayContent(Encoding.UTF8.GetBytes(payload));
+			return CreateGzipJsonContent(payload);
+		}
+
+		/// <summary>
+		/// Builds the HTTP body for a batch upload: the UTF-8 JSON, gzip-compressed, with
+		/// <c>Content-Type: application/json</c> and <c>Content-Encoding: gzip</c>. BetterStack's
+		/// ingest endpoint accepts gzipped bodies and decompresses them server-side (verified:
+		/// a gzip-encoded POST returns 202, same as plain JSON). Repetitive log JSON compresses
+		/// several-fold, which removes the bulk of this sink's outbound bandwidth.
+		/// </summary>
+		internal static ByteArrayContent CreateGzipJsonContent(string payload)
+		{
+			var raw = Encoding.UTF8.GetBytes(payload);
+			using var buffer = new MemoryStream();
+			using (var gzip = new GZipStream(buffer, CompressionLevel.Optimal, leaveOpen: true))
+				gzip.Write(raw, 0, raw.Length);
+			var content = new ByteArrayContent(buffer.ToArray());
 			content.Headers.Add("Content-Type", "application/json");
+			content.Headers.Add("Content-Encoding", "gzip");
 			return content;
 		}
 

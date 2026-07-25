@@ -122,4 +122,41 @@ public class BetterStackSinkTests
         var map = Assert.IsType<Dictionary<string, object>>(result["map"]);
         Assert.Equal("v", map["k"]);
     }
+
+    [Fact]
+    public async Task CreateGzipJsonContent_GzipsPayloadAndSetsHeaders()
+    {
+        var payload = "[{\"dt\":\"2026-07-25T00:00:00Z\",\"message\":\"hello\",\"level\":\"INF\"}]";
+
+        var content = BetterStackSink.CreateGzipJsonContent(payload);
+
+        // Headers advertise gzipped JSON so BetterStack decompresses server-side.
+        Assert.Equal("gzip", Assert.Single(content.Headers.ContentEncoding));
+        Assert.Equal("application/json", content.Headers.ContentType!.MediaType);
+
+        // The body must be actual gzip that decompresses back to the exact JSON.
+        var compressed = await content.ReadAsByteArrayAsync();
+        using var input = new System.IO.MemoryStream(compressed);
+        using var gzip = new System.IO.Compression.GZipStream(
+            input, System.IO.Compression.CompressionMode.Decompress);
+        using var reader = new System.IO.StreamReader(gzip, System.Text.Encoding.UTF8);
+        var decompressed = reader.ReadToEnd();
+
+        Assert.Equal(payload, decompressed);
+    }
+
+    [Fact]
+    public async Task CreateGzipJsonContent_ShrinksRepetitivePayload()
+    {
+        // A realistic batch is many similar JSON events; gzip should shrink it substantially.
+        var payload = string.Concat(Enumerable.Repeat(
+            "{\"dt\":\"2026-07-25T00:00:00Z\",\"message\":\"request handled\",\"level\":\"INF\"},", 500));
+
+        var content = BetterStackSink.CreateGzipJsonContent(payload);
+
+        var compressedLength = (await content.ReadAsByteArrayAsync()).Length;
+        Assert.True(
+            compressedLength < System.Text.Encoding.UTF8.GetByteCount(payload) / 5,
+            $"expected >5x compression, got {payload.Length} -> {compressedLength} bytes");
+    }
 }
