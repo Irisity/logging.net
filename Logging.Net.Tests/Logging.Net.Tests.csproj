@@ -1,0 +1,35 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- Multi-targeted so the net8.0 build of the libraries is actually executed, not just compiled.
+         net6.0 is deliberately not a test target: Microsoft.NET.Test.Sdk 17.14 rejects it outright and
+         the VSTest adapter falls back to .NET Framework assets there. It stays compile-verified only,
+         which costs little because no code is target-conditional — there is not a single #if in the
+         libraries, so the net6.0 assembly is the same C# 7.3 source against different reference
+         assemblies. netstandard2.0 is not a runnable test target either; that would need a net472 leg. -->
+    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+    <!-- CI installs the 8.0 runtime and uses it; on a machine that only has a newer runtime the
+         net8.0-compiled assemblies are still exercised instead of the run aborting. -->
+    <RollForward>LatestMajor</RollForward>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector" Version="6.0.4" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Logging.Net.Abstractions\Logging.Net.Abstractions.csproj" />
+    <ProjectReference Include="..\Logging.Net.Serilog\Logging.Net.Serilog.csproj" />
+  </ItemGroup>
+
+</Project>

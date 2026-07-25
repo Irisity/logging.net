@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFrameworks>netstandard2.0;net6.0;net8.0;net10.0</TargetFrameworks>
+    <!-- The netstandard2.0 target constrains the whole project to C# 7.3; pinned so that a newer SDK
+         default cannot silently let post-7.3 syntax in and break that target. -->
+    <LangVersion>7.3</LangVersion>
+    <ProduceReferenceAssembly>false</ProduceReferenceAssembly>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);1591</NoWarn>
+    <Description>Zero-dependency logging abstraction (ILog, LogFactory, LogContext) for .NET. Consumers depend only on this package; pair it with Logging.Net.Serilog for an implementation.</Description>
+    <!--<ImplicitUsings>enable</ImplicitUsings>-->
+    <!--<Nullable>enable</Nullable>-->
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Logging.Net.Serilog" />
+    <InternalsVisibleTo Include="Logging.Net.Tests" />
+  </ItemGroup>
+
+</Project>
