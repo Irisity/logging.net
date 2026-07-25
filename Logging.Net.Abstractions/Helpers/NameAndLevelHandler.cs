@@ -17,6 +17,11 @@ namespace Logging.Net.Abstractions.Helpers
 
         public NameAndLevelHandler AddName(string name)
         {
+            if (string.IsNullOrEmpty(name))
+            {
+                // Appending an empty segment would render as a dangling "Parent/" separator.
+                return this;
+            }
             var copy = new NameAndLevelHandler(this);
             copy.name = copy.name == null ? name : copy.name + "/" + name;
             return copy;

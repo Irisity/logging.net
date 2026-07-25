@@ -1,11 +1,102 @@
+using System;
 using System.Collections.Generic;
+using Flurl.Http.Testing;
 using Logging.Net.Serilog;
 using Serilog.Events;
+using Serilog.Parsing;
 
 namespace Logging.Net.Tests;
 
 public class BetterStackSinkTests
 {
+    private static LogEvent MakeEvent(string message) =>
+        new LogEvent(
+            DateTimeOffset.UtcNow,
+            LogEventLevel.Information,
+            exception: null,
+            new MessageTemplateParser().Parse(message),
+            Array.Empty<LogEventProperty>());
+
+    [Fact]
+    public void Dispose_UploadsWhatIsStillQueued()
+    {
+        // Logging.Flush() reaches the sink as a Dispose. Cancelling the uploader without draining
+        // would throw away exactly the events written on the way out of the process.
+        using var http = new HttpTest();
+        var sink = new BetterStackSink("token");
+        sink.Emit(MakeEvent("queued-at-shutdown"));
+
+        sink.Dispose();
+
+        http.ShouldHaveMadeACall();
+        Assert.Equal(0, sink.QueuedEventCount);
+    }
+
+    [Fact]
+    public void Emit_EnforcesTheQueueCap()
+    {
+        // The cap has to hold while the uploader is busy, which is when the queue actually grows.
+        using var http = new HttpTest();
+        var sink = new BetterStackSink("token");
+        try
+        {
+            for (int i = 0; i < 6000; i++)
+            {
+                sink.Emit(MakeEvent("event-" + i));
+            }
+
+            Assert.True(sink.QueuedEventCount <= 5000, $"queue grew to {sink.QueuedEventCount}");
+        }
+        finally
+        {
+            sink.Dispose();
+        }
+    }
+
+    [Fact]
+    public void Emit_AfterDispose_IsNotQueued()
+    {
+        using var http = new HttpTest();
+        var sink = new BetterStackSink("token");
+        sink.Dispose();
+
+        sink.Emit(MakeEvent("too-late"));
+
+        Assert.Equal(0, sink.QueuedEventCount);
+    }
+
+    [Theory]
+    [InlineData(null, true)]  // no status at all: timeout, DNS failure, reset connection
+    [InlineData(408, true)]
+    [InlineData(429, true)]   // rate limited — retrying is the whole point
+    [InlineData(500, true)]
+    [InlineData(502, true)]
+    [InlineData(503, true)]
+    [InlineData(504, true)]
+    [InlineData(400, false)]  // a malformed payload will not become valid on a retry
+    [InlineData(401, false)]
+    [InlineData(404, false)]
+    public void IsTransientError_CoversTheFailuresThatActuallyOccur(int? statusCode, bool expected)
+    {
+        Assert.Equal(expected, BetterStackSink.IsTransientError(statusCode));
+    }
+
+    [Fact]
+    public void RenderMessage_RecoversTheLiteralMessage()
+    {
+        // Messages are escaped before being handed to Serilog, so the sink must upload the rendered
+        // message rather than the raw template text, which still carries the escaping.
+        var literal = "regex a{2,3} and {Unfilled}";
+        var logEvent = new LogEvent(
+            DateTimeOffset.UtcNow,
+            LogEventLevel.Information,
+            exception: null,
+            new MessageTemplateParser().Parse(Log.EscapeTemplate(literal)),
+            Array.Empty<LogEventProperty>());
+
+        Assert.Equal(literal, logEvent.RenderMessage());
+    }
+
     [Fact]
     public void RenderProperties_NestsStructuredValues()
     {

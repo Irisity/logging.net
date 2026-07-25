@@ -9,17 +9,20 @@ namespace Logging.Net.Serilog
 {
     public static class Logging
 	{
-		internal static Logger mainLogger;
+		// Volatile because ILog instances compare against this reference to notice that Init or Flush
+		// replaced the logger, and rebuild themselves rather than writing into a disposed one.
+		internal static volatile Logger mainLogger;
 		internal static int? maxLevel;
 
 		/// <summary>
 		/// Initializes the ILog implementation that logs through Serilog. 
 		/// It supports logging to console, single file or to BetterStack logging (former Logtail).
 		/// </summary>
-		/// <param name="systemName">If supplied, will include this value in the "run.systemName" property.</param>
+		/// <param name="sink">Where the logs are written: console, a single file, or BetterStack.</param>
+		/// <param name="systemName">If supplied, will include this value in the "run.system" property.</param>
 		/// <param name="filename">Only used when sink parameter is File. Specifies the filename to use for output.</param>
 		/// <param name="betterStackToken">Only used when sink parameter is BetterStack. Specifies the access token used to authenticate with BetterStack.</param>
-		/// <param name="application">If supplied, will include this value in the "run.application" property.</param>
+		/// <param name="application">If supplied, will include this value in the "run.app" property.</param>
 		/// <param name="maxLevel">If supplied, any logs using a Level above this value will not be output.</param>
 		/// <param name="logHostname">If true, will include the hostname value in the "run.hostname" property.</param>
 		/// <param name="coloredConsole">Only used when sink parameter is Console. If null (default), ANSI colors are emitted when stdout is an interactive terminal and suppressed when redirected. Pass true or false to override the auto-detection.</param>
@@ -65,12 +68,25 @@ namespace Logging.Net.Serilog
 
 			configure?.Invoke(loggerConfiguration);
 
-			mainLogger?.Dispose();
-			mainLogger = loggerConfiguration.CreateLogger();
-			global::Serilog.Log.Logger = mainLogger;
+			// Point logging at a silent logger before disposing the previous one, so that a concurrent
+			// write during the swap goes nowhere rather than into a disposed logger. ILog instances
+			// created before this call notice the new reference and rebind themselves to it.
+			var previous = mainLogger;
+			if (previous != null)
+			{
+				mainLogger = createSilentLogger();
+				global::Serilog.Log.Logger = mainLogger;
+				previous.Dispose();
+			}
 
 			Logging.maxLevel = maxLevel;
 
+			var created = loggerConfiguration.CreateLogger();
+			mainLogger = created;
+			global::Serilog.Log.Logger = created;
+
+			// A distinct delegate instance per initialization: ILog instances resolved through
+			// LogFactory compare the accessor reference to detect that they must re-resolve.
 			Abstractions.LogFactory.LogImplementationAccessor = () => new Log();
 
 			var logContextAccessor = new LogContextAccessor();
@@ -87,15 +103,34 @@ namespace Logging.Net.Serilog
 		public static void UseMicrosoftLogging(Microsoft.Extensions.Logging.ILoggingBuilder loggingBuilder)
 		{
 			loggingBuilder.ClearProviders();
-			loggingBuilder.AddSerilog(mainLogger, dispose: false);
+			// No explicit logger: the provider then resolves Serilog's static Log.Logger per write, so
+			// the bridge follows a later Init or Flush instead of holding on to a disposed logger.
+			loggingBuilder.AddSerilog(dispose: false);
 		}
 
 		/// <summary>
-		/// Flushes and closes Serilog.
+		/// Flushes and closes Serilog. Logging after this call is silently discarded until Init is called again.
 		/// </summary>
 		public static void Flush()
 		{
-			mainLogger.Dispose();
+			var previous = mainLogger;
+			if (previous == null)
+			{
+				// Never initialized, or already flushed. A shutdown hook running after a failed Init
+				// must not throw over whatever caused the failure.
+				return;
+			}
+
+			// Swap in a silent logger first: leaving the disposed one in place would mean every
+			// existing ILog keeps writing into it, and every such write is discarded without a trace.
+			mainLogger = createSilentLogger();
+			global::Serilog.Log.Logger = mainLogger;
+			previous.Dispose();
+		}
+
+		private static Logger createSilentLogger()
+		{
+			return new LoggerConfiguration().CreateLogger();
 		}
 
 		private static ExpressionTemplate getOutputTemplate(TemplateTheme theme = null)
@@ -105,7 +140,12 @@ namespace Logging.Net.Serilog
 			// instead of setting log.name) still render a name in the [LVL name] slot.
 			// rest() emits the remaining properties as JSON, excluding any already referenced
 			// in the template — so `log` (used via log.name) is not duplicated in the output.
-			return new ExpressionTemplate("{@t:HH:mm:ss.fff} [{@l:u3} {coalesce(log.name, SourceContext)}] {@m} {rest():j}\n{@x}", theme: theme);
+			// Warning is rendered as INF to match how the BetterStack sink uploads it: this library's
+			// Level scale has no warning, but events bridged in from Microsoft.Extensions.Logging
+			// (EF Core, Kestrel, ...) still carry one, and the two sinks must not disagree about it.
+			// This is presentation only — the event keeps its Warning level, so MinimumLevel.Override
+			// and other level-based filtering passed through `configure` behave as written.
+			return new ExpressionTemplate("{@t:HH:mm:ss.fff} [{#if @l = 'Warning'}INF{#else}{@l:u3}{#end} {coalesce(log.name, SourceContext)}] {@m} {rest():j}\n{@x}", theme: theme);
 		}
 
 		private static TemplateTheme resolveConsoleTheme(bool? coloredConsoleOverride)

@@ -54,11 +54,18 @@ namespace Logging.Net.Abstractions
 	    }
 
 	    /// <summary>
-	    /// Returns an ILog with the name set to the fully-qualified name of the type.
+	    /// Returns an ILog with the name set to the simple (namespace-less) name of the type.
 	    /// </summary>
+	    /// <remarks>
+	    /// The namespace is deliberately left out to keep log names short; combine names with
+	    /// <see cref="ILog.Name"/> when two types with the same simple name need to be told apart.
+	    /// For generic types the arity suffix is stripped, so List&lt;T&gt; is named "List" rather than "List`1".
+	    /// </remarks>
 	    public static ILog NameOf<T>(this ILog log)
 	    {
-	        return log.Name(typeof(T).Name);
+	        var name = typeof(T).Name;
+	        var arity = name.IndexOf('`');
+	        return log.Name(arity < 0 ? name : name.Substring(0, arity));
 	    }
 
 	    /// <summary>

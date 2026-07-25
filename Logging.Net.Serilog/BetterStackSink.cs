@@ -26,12 +26,16 @@ namespace Logging.Net.Serilog
 	/// </summary>
 	/// <remarks>
 	/// Events are buffered in an in-memory queue and uploaded asynchronously in batches of up to 500.
-	/// The queue has a hard cap of 5000 pending events; if the producer outpaces the uploader, the oldest
-	/// events are dropped to make room and a notice is written to <see cref="Console"/>. Polly retries
-	/// transient HTTP failures (408/502/503/504) up to 5 times with exponential backoff; events are
-	/// dropped after retries are exhausted. Because this library is intended to run inside containers
-	/// where stdout is captured by the orchestrator, <see cref="Console"/> is used as the diagnostic
-	/// channel for sink-internal errors rather than a Serilog self-log.
+	/// The queue has a hard cap of 5000 pending events, enforced as events are queued rather than by the
+	/// uploader, which can be parked in a minutes-long retry ladder while the producer keeps going; if the
+	/// producer outpaces the uploader the oldest events are dropped and a notice is written to
+	/// <see cref="Console"/>. Polly retries transient failures — timeouts, connection errors, 408, 429 and
+	/// 5xx — up to 5 times with exponential backoff; events are dropped after retries are exhausted.
+	/// Disposing the sink (which is what <c>Logging.Flush()</c> and a re-<c>Init()</c> do) drains whatever
+	/// is still queued before returning, bounded by <see cref="DrainTimeout"/> so shutdown cannot hang.
+	/// Because this library is intended to run inside containers where stdout is captured by the
+	/// orchestrator, <see cref="Console"/> is used as the diagnostic channel for sink-internal errors
+	/// rather than a Serilog self-log.
 	/// </remarks>
 	public class BetterStackSink : ILogEventSink, IDisposable
 	{
@@ -55,22 +59,39 @@ namespace Logging.Net.Serilog
 			},
 		};
 		private readonly static AsyncRetryPolicy retryPolicy = Policy
-			.Handle<FlurlHttpException>(IsTransientError)
+			.Handle<FlurlHttpException>(e => IsTransientError(e.StatusCode))
 			.WaitAndRetryAsync(
 				5,
 				retryAttempt => TimeSpan.FromSeconds(Math.Pow(2, retryAttempt)),
 				(exception, timeSpan, retryAttempt, context) =>
 				{
-					Console.WriteLine($"Try {retryAttempt}/5 failed: {exception}");
+					SafeWriteLine($"Try {retryAttempt}/5 failed: {exception}");
 				});
+
+		private const int QueueCapacity = 5000;
+		private const int BatchSize = 500;
+		private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(200);
+
+		/// <summary>How long the final drain on Dispose is allowed to take before the rest is abandoned.</summary>
+		internal static readonly TimeSpan DrainTimeout = TimeSpan.FromSeconds(10);
 
 		private readonly string logtailToken;
 		private readonly ConcurrentQueue<LogEvent> events = new ConcurrentQueue<LogEvent>();
 		private readonly IFlurlClient client;
 		private readonly Task sendTask;
 		private readonly List<LogEvent> dequeuedEvents = new List<LogEvent>();
+		// Signals the uploader to stop polling and make a final pass over the queue.
 		private readonly CancellationTokenSource cancellationTokenSource = new CancellationTokenSource();
-		private bool disposedValue;
+		// Bounds that final pass, so a slow or unreachable endpoint cannot hold up process shutdown.
+		private readonly CancellationTokenSource drainDeadline = new CancellationTokenSource();
+		private int droppedEvents;
+		private volatile bool disposedValue;
+
+		/// <summary>The number of events waiting to be uploaded. Exposed for tests.</summary>
+		internal int QueuedEventCount
+		{
+			get { return this.events.Count; }
+		}
 
 		public BetterStackSink(string logtailToken)
 		{
@@ -86,59 +107,118 @@ namespace Logging.Net.Serilog
 		private async Task SendTask()
 		{
 			var token = this.cancellationTokenSource.Token;
+			var drainToken = this.drainDeadline.Token;
+			var draining = false;
+
 			while (true)
 			{
-				try
-				{
-					await Task.Delay(TimeSpan.FromMilliseconds(200), token);
-				}
-				catch (OperationCanceledException)
-				{
-					break;
-				}
-
-				int discarded = 0;
-				while (this.events.Count > 5000 && this.events.TryDequeue(out var _))
-				{
-					++discarded;
-				}
-				if (discarded != 0)
-				{
-					Console.WriteLine($"Discarded {discarded} logs");
-				}
-
-				while (this.dequeuedEvents.Count < 500 && this.events.TryDequeue(out var logEvent))
-					this.dequeuedEvents.Add(logEvent);
-
-				if (this.dequeuedEvents.Any())
+				if (!draining)
 				{
 					try
 					{
-						var content = this.serialize(this.dequeuedEvents);
-						await this.send(content);
+						await Task.Delay(PollInterval, token).ConfigureAwait(false);
 					}
-					catch (Exception e)
+					catch (OperationCanceledException)
 					{
-						Console.WriteLine($"Failed uploading {this.dequeuedEvents.Count} logs: {e}");
+						// Dispose asked us to stop. Make a final pass over whatever is still queued
+						// instead of exiting and discarding it — this is the flush path, and the events
+						// written just before shutdown are usually the ones worth keeping.
+						draining = true;
 					}
-					this.dequeuedEvents.Clear();
+				}
+
+				try
+				{
+					var discarded = Interlocked.Exchange(ref this.droppedEvents, 0);
+					if (discarded != 0)
+					{
+						SafeWriteLine($"Discarded {discarded} logs");
+					}
+
+					while (this.dequeuedEvents.Count < BatchSize && this.events.TryDequeue(out var logEvent))
+						this.dequeuedEvents.Add(logEvent);
+
+					if (this.dequeuedEvents.Any())
+					{
+						try
+						{
+							var content = this.serialize(this.dequeuedEvents);
+							await this.send(content, draining ? drainToken : CancellationToken.None).ConfigureAwait(false);
+						}
+						catch (Exception e)
+						{
+							SafeWriteLine($"Failed uploading {this.dequeuedEvents.Count} logs: {e}");
+						}
+						this.dequeuedEvents.Clear();
+					}
+				}
+				catch (Exception e)
+				{
+					// The uploader must never die: a faulted pump would swallow every later event into a
+					// queue nobody drains, and make the Dispose that waits on it rethrow.
+					SafeWriteLine($"Log upload failed unexpectedly: {e}");
+				}
+
+				if (draining && (this.events.IsEmpty || drainToken.IsCancellationRequested))
+				{
+					break;
 				}
 			}
 		}
 
 		public void Emit(LogEvent logEvent)
 		{
+			if (this.disposedValue)
+			{
+				// The uploader has stopped; queuing here would only grow a queue nobody drains.
+				return;
+			}
+
 			this.events.Enqueue(logEvent);
+
+			// Enforce the cap here rather than in the uploader. The uploader can be parked inside a
+			// retry ladder for minutes, during which it applies no back-pressure whatsoever.
+			while (this.events.Count > QueueCapacity && this.events.TryDequeue(out var _))
+			{
+				Interlocked.Increment(ref this.droppedEvents);
+			}
 		}
 
-		private Task send(HttpContent content)
+		private Task send(HttpContent content, CancellationToken cancellationToken)
 		{
-			return retryPolicy.ExecuteAsync(async () =>
+			return retryPolicy.ExecuteAsync(async ct =>
 			{
-				var r = await this.client.Request().PostAsync(content);
-				if (r != null)
-					r.Dispose();
-			});
+				try
+				{
+					using (await this.client.Request().PostAsync(content, cancellationToken: ct).ConfigureAwait(false))
+					{
+					}
+				}
+				catch (FlurlHttpException e)
+				{
+					// On a failure Flurl throws instead of handing us the response, so this is the only
+					// place left to dispose it. Leaving it to the finalizer pins a connection with an
+					// unread body — the same failure mode as the original socket exhaustion bug.
+					if (e.Call != null && e.Call.Response != null)
+						e.Call.Response.Dispose();
+					throw;
+				}
+			}, cancellationToken);
+		}
+
+		/// <summary>
+		/// Writes a sink diagnostic without ever throwing: stdout may be a closed pipe in a detached
+		/// container or a service, and an IOException from here would otherwise kill the uploader.
+		/// </summary>
+		private static void SafeWriteLine(string message)
+		{
+			try
+			{
+				Console.WriteLine(message);
+			}
+			catch (Exception)
+			{
+			}
 		}
 
 		private HttpContent serialize(IEnumerable<LogEvent> logs)
@@ -148,7 +228,9 @@ namespace Logging.Net.Serilog
 				var dict = new Dictionary<string, object>
 				{
 					{ "dt", log.Timestamp },
-					{ "message", log.MessageTemplate.Text },
+					// The rendered message, not the raw template text: messages are escaped literals
+					// (see Log.EscapeTemplate), and rendering reverses that escaping.
+					{ "message", log.RenderMessage() },
 					{ "level", LevelToString(log.Level) }
 				};
 				if (log.Exception != null)
@@ -318,13 +400,41 @@ namespace Logging.Net.Serilog
 		{
 			if (!disposedValue)
 			{
+				// Set first, so producers stop queuing into a sink that is about to stop draining.
+				disposedValue = true;
+
 				if (disposing)
 				{
+					this.drainDeadline.CancelAfter(DrainTimeout);
 					this.cancellationTokenSource.Cancel();
-					this.sendTask.Wait();
-				}
 
-				disposedValue = true;
+					var drained = false;
+					try
+					{
+						// Bounded: an unreachable endpoint must not hold the process past its shutdown
+						// grace period, and on a single-threaded synchronization context (Blazor
+						// WebAssembly) an unbounded wait on the uploader would never return at all.
+						drained = this.sendTask.Wait(DrainTimeout + TimeSpan.FromSeconds(1));
+					}
+					catch (Exception e)
+					{
+						SafeWriteLine($"Failed flushing logs on shutdown: {e}");
+					}
+
+					if (!drained)
+					{
+						SafeWriteLine("Timed out flushing logs on shutdown; remaining events were dropped");
+					}
+
+					this.client.Dispose();
+
+					if (drained)
+					{
+						// Only safe once the uploader has stopped using these tokens.
+						this.cancellationTokenSource.Dispose();
+						this.drainDeadline.Dispose();
+					}
+				}
 			}
 		}
 
@@ -335,17 +445,20 @@ namespace Logging.Net.Serilog
 			GC.SuppressFinalize(this);
 		}
 
-		private static bool IsTransientError(FlurlHttpException exception)
+		internal static bool IsTransientError(int? responseStatusCode)
 		{
-			int[] httpStatusCodesWorthRetrying =
+			if (!responseStatusCode.HasValue)
 			{
-				(int)HttpStatusCode.RequestTimeout, // 408
-				(int)HttpStatusCode.BadGateway, // 502
-				(int)HttpStatusCode.ServiceUnavailable, // 503
-				(int)HttpStatusCode.GatewayTimeout // 504
-			};
+				// No status at all means the request never completed: a timeout, a DNS failure, a reset
+				// connection. Those are the most common transient failures of the lot, and requiring a
+				// status code here previously excluded every one of them.
+				return true;
+			}
 
-			return exception.StatusCode.HasValue && httpStatusCodesWorthRetrying.Contains(exception.StatusCode.Value);
+			var statusCode = responseStatusCode.Value;
+			return statusCode == (int)HttpStatusCode.RequestTimeout        // 408
+				|| statusCode == 429                                       // Too Many Requests
+				|| statusCode >= 500;                                      // any server-side failure
 		}
 	}
 

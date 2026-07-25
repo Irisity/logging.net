@@ -1,0 +1,28 @@
+<Project>
+
+  <!--
+    Shared NuGet metadata for the packable projects. Version defaults to 1.0.0 for local builds and is
+    expected to be overridden by the release pipeline (dotnet pack -p:Version=x.y.z); publishing the
+    same version twice is rejected by NuGet.org.
+  -->
+  <PropertyGroup>
+    <Version Condition="'$(Version)' == ''">1.0.0</Version>
+    <Authors>Irisity</Authors>
+    <Company>Irisity</Company>
+    <Copyright>Copyright (c) 2024 Irisity</Copyright>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/Irisity/logging.net</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/Irisity/logging.net</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageTags>logging;log;serilog;betterstack;logtail</PackageTags>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(IsPackable)' != 'false'">
+    <None Include="$(MSBuildThisFileDirectory)README.md" Pack="true" PackagePath="\" Visible="false" />
+  </ItemGroup>
+
+</Project>

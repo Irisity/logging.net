@@ -20,13 +20,19 @@ namespace Logging.Net.Abstractions
 	    /// <summary>
 	    /// Returns an ILog that has a pre-configured level.
 	    /// </summary>
-	    /// <remarks>Note that levels are additive. So if an ILog have a Level set to 1, and Log method is called with level 2, the actual resulting level will be 3.</remarks>
+	    /// <remarks>
+	    /// Note that levels are additive. So if an ILog have a Level set to 1, and Log method is called with level 2, the actual resulting level will be 3.
+	    /// This applies to errors as well, which is easy to overlook when the Level is configured far from the call site:
+	    /// on an ILog with Level set to 2, Error (-1) accumulates to 1 and is therefore reported as Debug, and is discarded
+	    /// entirely if the implementation was initialized with a maxLevel below that.
+	    /// </remarks>
 	    ILog Level(int level);
 
 	    /// <summary>
 	    /// Logs a message with the specified level.
 	    /// </summary>
 	    /// <param name="level">The level to add to the configured level of this ILog</param>
+	    /// <param name="message">The message to log. Keep it static and unique so it stays searchable; put the varying data in properties.</param>
 	    /// <param name="exception">An optional exception</param>
 	    void Log(int level, string message, Exception exception = null);
 	}
