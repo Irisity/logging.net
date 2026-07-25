@@ -170,13 +170,15 @@ namespace Logging.Net.Serilog
 		internal static ByteArrayContent CreateGzipJsonContent(string payload)
 		{
 			var raw = Encoding.UTF8.GetBytes(payload);
-			using var buffer = new MemoryStream();
-			using (var gzip = new GZipStream(buffer, CompressionLevel.Optimal, leaveOpen: true))
-				gzip.Write(raw, 0, raw.Length);
-			var content = new ByteArrayContent(buffer.ToArray());
-			content.Headers.Add("Content-Type", "application/json");
-			content.Headers.Add("Content-Encoding", "gzip");
-			return content;
+			using (var buffer = new MemoryStream())
+			{
+				using (var gzip = new GZipStream(buffer, CompressionLevel.Optimal, leaveOpen: true))
+					gzip.Write(raw, 0, raw.Length);
+				var content = new ByteArrayContent(buffer.ToArray());
+				content.Headers.Add("Content-Type", "application/json");
+				content.Headers.Add("Content-Encoding", "gzip");
+				return content;
+			}
 		}
 
 		private string LevelToString(LogEventLevel level)
